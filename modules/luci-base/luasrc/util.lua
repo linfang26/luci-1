@@ -1,25 +1,5 @@
---[[
-LuCI - Utility library
-
-Description:
-Several common useful Lua functions
-
-License:
-Copyright 2008 Steven Barth <steven@midlink.org>
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-]]--
+-- Copyright 2008 Steven Barth <steven@midlink.org>
+-- Licensed to the public under the Apache License 2.0.
 
 local io = require "io"
 local math = require "math"
@@ -29,6 +9,9 @@ local ldebug = require "luci.debug"
 local string = require "string"
 local coroutine = require "coroutine"
 local tparser = require "luci.template.parser"
+
+local _ubus = require "ubus"
+local _ubus_connection = nil
 
 local getmetatable, setmetatable = getmetatable, setmetatable
 local rawget, rawset, unpack = rawget, rawset, unpack
@@ -703,6 +686,87 @@ function execl(command)
 
 	return data
 end
+
+--- Issue an ubus call.
+-- @param object		String containing the ubus object to call
+-- @param method		String containing the ubus method to call
+-- @param values		Table containing the values to pass
+-- @return			Table containin the ubus result
+function ubus(object, method, data)
+	if not _ubus_connection then
+		_ubus_connection = _ubus.connect()
+		assert(_ubus_connection, "Unable to establish ubus connection")
+	end
+
+	if object and method then
+		if type(data) ~= "table" then
+			data = { }
+		end
+		return _ubus_connection:call(object, method, data)
+	elseif object then
+		return _ubus_connection:signatures(object)
+	else
+		return _ubus_connection:objects()
+	end
+end
+
+--- Convert data structure to JSON
+-- @param data		The data to serialize
+-- @param writer	A function to write a chunk of JSON data (optional)
+-- @return			String containing the JSON if called without write callback
+function serialize_json(x, cb)
+	local rv, push = nil, cb
+	if not push then
+		rv = { }
+		push = function(tok) rv[#rv+1] = tok end
+	end
+
+	if x == nil then
+		push("null")
+	elseif type(x) == "table" then
+		-- test if table is array like
+		local k, v
+		local n1, n2 = 0, 0
+		for k in pairs(x) do n1 = n1 + 1 end
+		for k in ipairs(x) do n2 = n2 + 1 end
+
+		if n1 == n2 and n1 > 0 then
+			push("[")
+			for k = 1, n2 do
+				if k > 1 then
+					push(",")
+				end
+				serialize_json(x[k], push)
+			end
+			push("]")
+		else
+			push("{")
+			for k, v in pairs(x) do
+				push("%q:" % tostring(k))
+				serialize_json(v, push)
+				if next(x, k) then
+					push(",")
+				end
+			end
+			push("}")
+		end
+	elseif type(x) == "number" or type(x) == "boolean" then
+		if (x ~= x) then
+			-- NaN is the only value that doesn't equal to itself.
+			push("Number.NaN")
+		else
+			push(tostring(x))
+		end
+	else
+		push('"%s"' % tostring(x):gsub('["%z\1-\31]',
+			function(c) return '\\u%04x' % c:byte(1) end))
+	end
+
+	if not cb then
+		return table.concat(rv, "")
+	end
+end
+
 
 --- Returns the absolute path to LuCI base directory.
 -- @return		String containing the directory path

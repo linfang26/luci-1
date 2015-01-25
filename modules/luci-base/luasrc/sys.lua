@@ -1,29 +1,5 @@
---[[
-LuCI - System library
-
-Description:
-Utilities for interaction with the Linux system
-
-FileId:
-$Id$
-
-License:
-Copyright 2008 Steven Barth <steven@midlink.org>
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-]]--
-
+-- Copyright 2008 Steven Barth <steven@midlink.org>
+-- Licensed to the public under the Apache License 2.0.
 
 local io     = require "io"
 local os     = require "os"
@@ -144,57 +120,10 @@ function httpget(url, stream, target)
 	end
 end
 
---- Returns the system load average values.
--- @return	String containing the average load value 1 minute ago
--- @return	String containing the average load value 5 minutes ago
--- @return	String containing the average load value 15 minutes ago
-function loadavg()
-	local info = nixio.sysinfo()
-	return info.loads[1], info.loads[2], info.loads[3]
-end
-
 --- Initiate a system reboot.
 -- @return	Return value of os.execute()
 function reboot()
 	return os.execute("reboot >/dev/null 2>&1")
-end
-
---- Returns the system type, cpu name and installed physical memory.
--- @return	String containing the system or platform identifier
--- @return	String containing hardware model information
--- @return	String containing the total memory amount in kB
--- @return	String containing the memory used for caching in kB
--- @return	String containing the memory used for buffering in kB
--- @return	String containing the free memory amount in kB
--- @return	String containing the cpu bogomips (number)
-function sysinfo()
-	local cpuinfo = fs.readfile("/proc/cpuinfo")
-	local meminfo = fs.readfile("/proc/meminfo")
-
-	local memtotal = tonumber(meminfo:match("MemTotal:%s*(%d+)"))
-	local memcached = tonumber(meminfo:match("\nCached:%s*(%d+)"))
-	local memfree = tonumber(meminfo:match("MemFree:%s*(%d+)"))
-	local membuffers = tonumber(meminfo:match("Buffers:%s*(%d+)"))
-	local bogomips = tonumber(cpuinfo:match("[Bb]ogo[Mm][Ii][Pp][Ss].-: ([^\n]+)")) or 0
-	local swaptotal = tonumber(meminfo:match("SwapTotal:%s*(%d+)"))
-	local swapcached = tonumber(meminfo:match("SwapCached:%s*(%d+)"))
-	local swapfree = tonumber(meminfo:match("SwapFree:%s*(%d+)"))
-
-	local system =
-		cpuinfo:match("system type\t+: ([^\n]+)") or
-		cpuinfo:match("Processor\t+: ([^\n]+)") or
-		cpuinfo:match("model name\t+: ([^\n]+)")
-
-	local model =
-		fs.readfile("/proc/device-tree/model") or
-		luci.util.pcdata(fs.readfile("/tmp/sysinfo/model")) or
-		cpuinfo:match("machine\t+: ([^\n]+)") or
-		cpuinfo:match("Hardware\t+: ([^\n]+)") or
-		luci.util.pcdata(fs.readfile("/proc/diag/model")) or
-		nixio.uname().machine or
-		system
-
-	return system, model, memtotal, memcached, membuffers, memfree, bogomips, swaptotal, swapcached, swapfree
 end
 
 --- Retrieves the output of the "logread" command.
@@ -458,55 +387,6 @@ function net.conntrack(callback)
 	return connt
 end
 
---- Determine the current IPv4 default route. If multiple default routes exist,
--- return the one with the lowest metric.
--- @return	Table with the properties of the current default route.
---			The following fields are defined:
---			{ "dest", "gateway", "metric", "refcount", "usecount", "irtt",
---			  "flags", "device" }
-function net.defaultroute()
-	local route
-
-	net.routes(function(rt)
-		if rt.dest:prefix() == 0 and (not route or route.metric > rt.metric) then
-			route = rt
-		end
-	end)
-
-	return route
-end
-
---- Determine the current IPv6 default route. If multiple default routes exist,
--- return the one with the lowest metric.
--- @return	Table with the properties of the current default route.
---			The following fields are defined:
---			{ "source", "dest", "nexthop", "metric", "refcount", "usecount",
---			  "flags", "device" }
-function net.defaultroute6()
-	local route
-
-	net.routes6(function(rt)
-		if rt.dest:prefix() == 0 and rt.device ~= "lo" and
-		   (not route or route.metric > rt.metric)
-		then
-			route = rt
-		end
-	end)
-
-	if not route then
-		local global_unicast = luci.ip.IPv6("2000::/3")
-		net.routes6(function(rt)
-			if rt.dest:equal(global_unicast) and
-			   (not route or route.metric > rt.metric)
-			then
-				route = rt
-			end
-		end)
-	end
-
-	return route
-end
-
 --- Determine the names of available network interfaces.
 -- @return	Table containing all current interface names
 function net.devices()
@@ -549,19 +429,6 @@ function net.deviceinfo()
 	return devs
 end
 
-
--- Determine the MAC address belonging to the given IP address.
--- @param ip	IPv4 address
--- @return		String containing the MAC address or nil if it cannot be found
-function net.ip4mac(ip)
-	local mac = nil
-	net.arptable(function(e)
-		if e["IP address"] == ip then
-			mac = e["HW address"]
-		end
-	end)
-	return mac
-end
 
 --- Returns the current kernel routing table entries.
 -- @return	Table of tables with properties of the corresponding routes.
